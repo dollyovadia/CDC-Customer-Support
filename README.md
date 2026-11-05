@@ -23,7 +23,7 @@ Store credentials as environment variables / secrets in the environment settings
 | `CDC_SECRET` | application secret |
 | `CDC_DATA_CENTER` | `eu1` (default), `us1`, `au1`, … |
 | `CDC_PHONE_FIELDS` | optional, default `phoneNumber,profile.phones.number` |
-| `CDC_EMAIL_FIELDS` | optional, default `profile.email,loginIDs.emails` |
+| `CDC_EMAIL_FIELDS` | optional, default `profile.email,loginIDs.emails,loginIDs.unverifiedEmails` |
 
 The host `accounts.<dc>.gigya.com` must be allowed in the network settings.
 

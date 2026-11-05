@@ -48,6 +48,7 @@ NEW_COLUMNS = [
     "CDC accounts on user email (UID)",
     "Phone on email account",
     "CDC accounts on other emails",
+    "CDC account details (per UID)",
     "CDC lookup error",
 ]
 
@@ -59,7 +60,7 @@ class CDCClient:
         self.url = f"https://accounts.{data_center}.gigya.com/accounts.search"
         self.auth = {"apiKey": api_key, "userKey": user_key, "secret": secret}
         self.phone_fields = phone_fields or ["phoneNumber", "profile.phones.number"]
-        self.email_fields = email_fields or ["profile.email", "loginIDs.emails"]
+        self.email_fields = email_fields or ["profile.email", "loginIDs.emails", "loginIDs.unverifiedEmails"]
         self.delay = delay
 
     @classmethod
@@ -77,7 +78,7 @@ class CDCClient:
     def _search(self, fields, value):
         value = value.replace("\\", "\\\\").replace('"', '\\"')
         where = " OR ".join(f'{f} = "{value}"' for f in fields)
-        query = f"SELECT UID, profile.email, loginIDs.emails, phoneNumber, profile.phones FROM accounts WHERE {where} LIMIT 20"
+        query = f"SELECT UID, profile.email, loginIDs, phoneNumber, profile.phones, created, lastLogin, isActive, isRegistered, isVerified, hasLiteAccount FROM accounts WHERE {where} LIMIT 20"
         data = urllib.parse.urlencode({**self.auth, "query": query}).encode()
         for attempt in range(4):
             try:
@@ -148,6 +149,20 @@ def phone_variants(phone):
     return [f"+972{national}", f"972{national}", f"0{national}"]
 
 
+def account_summary(acc):
+    """One readable line per account: when created, last login, state flags."""
+    flags = [n for n in ("isActive", "isRegistered", "isVerified", "hasLiteAccount") if acc.get(n)]
+    unver = (acc.get("loginIDs") or {}).get("unverifiedEmails") or []
+    kind = "new-style UID" if "-" in acc["UID"] else "old-style UID"
+    parts = [acc["UID"], kind,
+             f"created {str(acc.get('created') or '?')[:10]}",
+             f"last login {str(acc.get('lastLogin') or 'never')[:10]}",
+             ",".join(flags) or "no flags"]
+    if unver:
+        parts.append("unverified emails: " + ", ".join(unver))
+    return " | ".join(parts)
+
+
 def norm_email(e):
     return (e or "").strip().lower()
 
@@ -185,6 +200,10 @@ def check_user(client, phone, email, other_emails, other_phones=None):
             accs = client.by_email(oe)
             others.append(f"{oe}: {', '.join(a['UID'] for a in accs) or 'none'}")
         r["CDC accounts on other emails"] = " | ".join(others) or None
+        seen = {}
+        for a in (phone_accs or []) + (email_accs or []):
+            seen.setdefault(a["UID"], account_summary(a))
+        r["CDC account details (per UID)"] = "\n".join(seen.values()) or None
     except Exception as ex:  # keep going; record the error on the row
         r["CDC lookup error"] = str(ex)[:500]
         r["CDC result"] = "Lookup error"

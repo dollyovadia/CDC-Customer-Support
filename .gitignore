@@ -1,0 +1,6 @@
+# Customer data must never be committed
+*.xlsx
+*.xls
+*.csv
+.env
+__pycache__/

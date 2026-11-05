@@ -232,8 +232,33 @@ def run(inp, out, client, limit=None):
         done += 1
         print(f"{uid}: {res['CDC result']}", flush=True)
 
+    write_results_sheet(wb, ws, col, start)
     wb.save(out)
     print(f"Checked {done} users -> {out}")
+
+
+def write_results_sheet(wb, users, col, start):
+    """Compact 'CDC results' sheet: one row per user with User ID, ticket
+    numbers and the CDC findings only - for import into the ticketing system,
+    so each result can be traced back to its tickets."""
+    if "CDC results" in wb.sheetnames:
+        del wb["CDC results"]
+    rs = wb.create_sheet("CDC results")
+    keep = ["User ID", "Priority", "Ticket numbers", "Latest ticket #",
+            "Phone (intl, for CDC)", "Email", "Other emails"]
+    keep = [k for k in keep if k in col]
+    header = keep + NEW_COLUMNS
+    for i, h in enumerate(header):
+        rs.cell(row=1, column=i + 1, value=h).font = openpyxl.styles.Font(bold=True)
+    for row in range(2, users.max_row + 1):
+        if not users.cell(row=row, column=col["User ID"] + 1).value:
+            continue
+        if users.cell(row=row, column=start + 1).value is None:  # not checked (--limit)
+            continue
+        vals = [users.cell(row=row, column=col[k] + 1).value for k in keep]
+        vals += [users.cell(row=row, column=start + i).value for i in range(len(NEW_COLUMNS))]
+        rs.append(vals)
+    rs.freeze_panes = "A2"
 
 
 def main():

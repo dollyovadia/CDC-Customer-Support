@@ -6,7 +6,7 @@ For each user in the **Users** sheet of the login-issues workbook it:
 
 1. Looks up CDC accounts by phone (`Phone (intl, for CDC)`) and records the email connected to it.
 2. If the user also has an email: records whether it matches the CDC email, and whether a separate CDC account exists on that email (and that account's phone). Emails in `Other emails` are checked too.
-3. Saves a **copy** of the workbook with new columns (`CDC lookup date`, `CDC result`, UIDs, emails, phones, errors). `User ID` and `Ticket numbers` stay on every row, so each finding stays linked to its tickets. The empty `CDC finding` column is filled with the result.
+3. Saves a **copy** of the workbook with new columns (`CDC lookup date`, `CDC result`, UIDs, emails, phones, errors). `User ID` and `Ticket numbers` stay on every row, so each finding stays linked to its tickets. The empty `CDC finding` column is filled with the result. A compact **CDC results** sheet (User ID, Priority, Ticket numbers, Latest ticket #, identifiers, findings) is added for import into the ticketing system.
 
 Read-only: it uses `accounts.search` only and never changes accounts. The original workbook is never overwritten.
 

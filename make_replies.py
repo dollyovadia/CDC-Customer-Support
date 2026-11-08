@@ -45,6 +45,11 @@ REPLY_TEMPLATES = [
      "{greet}\nראינו שהצלחת להתחבר לחשבון עם המייל {cdc_email} בתאריך {last_login}. אם עדיין יש בעיה, אנא כתבי לנו מה קורה כשאת מנסה להתחבר.",
      "{greet}\nראינו שהצלחת להתחבר לחשבון עם המייל {cdc_email} בתאריך {last_login}. אם עדיין יש בעיה, אנא כתוב לנו מה קורה כשאתה מנסה להתחבר.",
      "{greet}\nראינו שההתחברות לחשבון עם המייל {cdc_email} הצליחה בתאריך {last_login}. אם עדיין יש בעיה, נשמח לדעת מה קורה בניסיון ההתחברות."),
+    ("*", "LOGGED IN AFTER CONTACT (mismatch)",
+     "Customer wrote with one email but their phone's account has another email, and that account was logged into after they contacted us.",
+     "{greet}\nראינו שהצלחת להתחבר לחשבון עם המייל {cdc_email} בתאריך {last_login}. שימי לב: המייל {email} שציינת אינו המייל של חשבון זה, ולכן יש להתחבר עם {cdc_email}. אם עדיין יש בעיה, אנא כתבי לנו מה קורה כשאת מנסה להתחבר.",
+     "{greet}\nראינו שהצלחת להתחבר לחשבון עם המייל {cdc_email} בתאריך {last_login}. שים לב: המייל {email} שציינת אינו המייל של חשבון זה, ולכן יש להתחבר עם {cdc_email}. אם עדיין יש בעיה, אנא כתוב לנו מה קורה כשאתה מנסה להתחבר.",
+     "{greet}\nראינו שההתחברות לחשבון עם המייל {cdc_email} הצליחה בתאריך {last_login}. לתשומת לבך: המייל {email} שצוין אינו המייל של חשבון זה, ולכן יש להתחבר עם {cdc_email}. אם עדיין יש בעיה, נשמח לדעת מה קורה בניסיון ההתחברות."),
     ("*", "Phone not in CDC (likely erased)",
      "We can not see the phone attached to an account please create a new account. Or give us the email you are trying to login with to check.",
      "{greet}\nלא מצאנו חשבון המשויך למספר הטלפון {phone}. אנא הירשמי מחדש באתר/באפליקציה, או שלחי לנו את כתובת המייל שאיתה ניסית להתחבר כדי שנבדוק.",
@@ -178,7 +183,11 @@ def build(inp, out, issues):
         result = g("CDC result") or ""
         has_acc = g("CDC accounts on phone (UID)") not in (None, "none") or (result == "Email found")
         ll = last_login_after_contact(g("CDC account details (per UID)"), g("First contact")) if has_acc else None
-        key = "LOGGED IN AFTER CONTACT" if ll and result in ("Phone found", "Match: phone and email on same account", "Phone on multiple accounts", "Email found") else result
+        key = result
+        if ll and result in ("Phone found", "Match: phone and email on same account", "Phone on multiple accounts", "Email found"):
+            key = "LOGGED IN AFTER CONTACT"
+        elif ll and result in ("Mismatch: phone account has other email; no account on user email", "Mismatch: email on a different account"):
+            key = "LOGGED IN AFTER CONTACT (mismatch)"
         heb_name, gender, check = hebrew_name_and_gender(g("Customer name"))
         tpl = templates.get((g("Main issue"), key)) or templates.get(("*", key)) or {"F": f"[אין תבנית לתוצאה: {result}]"}
         text = tpl.get(gender) or tpl.get("") or tpl.get("F", "")

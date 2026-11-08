@@ -41,7 +41,7 @@ REPLY_TEMPLATES = [
      "{greet}\nמספר הטלפון {phone} משויך ליותר מחשבון אחד. חשבון ההתחברות שלך רשום עם כתובת המייל: {cdc_email}\nאנא נסה להתחבר עם כתובת מייל זו.",
      "{greet}\nמספר הטלפון {phone} משויך ליותר מחשבון אחד. חשבון ההתחברות רשום עם כתובת המייל: {cdc_email}\nיש להתחבר עם כתובת מייל זו."),
     ("*", "LOGGED IN AFTER CONTACT",
-     "CDC shows a login on the account after the customer first contacted us: tell them we saw they managed to log in.",
+     "CDC shows a login on the account since the go-live cutoff (default 2026-10-07): tell them we saw they managed to log in.",
      "{greet}\nראינו שהצלחת להתחבר לחשבון עם המייל {cdc_email} בתאריך {last_login}. אם עדיין יש בעיה, אנא כתבי לנו מה קורה כשאת מנסה להתחבר.",
      "{greet}\nראינו שהצלחת להתחבר לחשבון עם המייל {cdc_email} בתאריך {last_login}. אם עדיין יש בעיה, אנא כתוב לנו מה קורה כשאתה מנסה להתחבר.",
      "{greet}\nראינו שההתחברות לחשבון עם המייל {cdc_email} הצליחה בתאריך {last_login}. אם עדיין יש בעיה, נשמח לדעת מה קורה בניסיון ההתחברות."),
@@ -103,11 +103,14 @@ CDC_COLS = ["CDC result", "CDC accounts on phone (UID)", "CDC email on phone acc
             "Phone on email account", "CDC accounts on other emails", "CDC account details (per UID)"]
 import re, datetime as dt
 
-def last_login_after_contact(details, first_contact):
+LOGIN_CUTOFF = dt.date(2026, 10, 7)   # the CDC go-live: a login on/after this date counts as "managed to log in"
+
+
+def last_login_after_contact(details, cutoff=None):
     """Latest 'last login YYYY-MM-DD' in the CDC details that is on/after the
-    customer's first contact date; None otherwise."""
-    if not details or not first_contact: return None
-    fc = first_contact.date() if isinstance(first_contact, dt.datetime) else first_contact
+    cutoff date (default LOGIN_CUTOFF); None otherwise."""
+    if not details: return None
+    fc = cutoff or LOGIN_CUTOFF
     dates = [dt.date.fromisoformat(d) for d in re.findall(r"last login (\d{4}-\d{2}-\d{2})", str(details))]
     later = [d for d in dates if d >= fc]
     return max(later).isoformat() if later else None
@@ -160,7 +163,7 @@ def login_email(uids, emails, details):
     return "(לא נמצא מייל בחשבון)"
 
 
-def build(inp, out, issues):
+def build(inp, out, issues, cutoff=None):
     wb = openpyxl.load_workbook(inp)
     ensure_templates(wb)
     templates = load_templates(wb)
@@ -169,7 +172,7 @@ def build(inp, out, issues):
     if missing: sys.exit(f"Users sheet missing columns: {missing}")
     if "Replies" in wb.sheetnames: del wb["Replies"]
     rs = wb.create_sheet("Replies", 0)
-    header = HEAD_COLS + ["Reply (copy-paste)", "Logged in after contact", "Email check", "First name (Hebrew)", "Gender guess", "Name needs check"] + ["Customer gave: " + c for c in CUSTOMER_COLS] + CDC_COLS
+    header = HEAD_COLS + ["Reply (copy-paste)", "Logged in since cutoff", "Email check", "First name (Hebrew)", "Gender guess", "Name needs check"] + ["Customer gave: " + c for c in CUSTOMER_COLS] + CDC_COLS
     rs.append(header)
     for i, c in enumerate(rs[1], 1):
         c.font = Font(bold=True)
@@ -182,7 +185,7 @@ def build(inp, out, issues):
         if not g("User ID") or (issues != ["all"] and g("Main issue") not in issues): continue
         result = g("CDC result") or ""
         has_acc = g("CDC accounts on phone (UID)") not in (None, "none") or (result == "Email found")
-        ll = last_login_after_contact(g("CDC account details (per UID)"), g("First contact")) if has_acc else None
+        ll = last_login_after_contact(g("CDC account details (per UID)"), cutoff) if has_acc else None
         key = result
         if ll and result in ("Phone found", "Match: phone and email on same account", "Phone on multiple accounts", "Email found"):
             key = "LOGGED IN AFTER CONTACT"
@@ -221,5 +224,6 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("input"); ap.add_argument("output")
     ap.add_argument("--issues", default=";".join(DEFAULT_ISSUES), help="main issues to include, separated by ';' (or 'all')")
+    ap.add_argument("--login-since", default=LOGIN_CUTOFF.isoformat(), help="a CDC login on/after this date counts as 'managed to log in'")
     a = ap.parse_args()
-    build(a.input, a.output, [s.strip() for s in a.issues.split(";") if s.strip()])
+    build(a.input, a.output, [s.strip() for s in a.issues.split(";") if s.strip()], dt.date.fromisoformat(a.login_since))

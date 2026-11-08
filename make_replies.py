@@ -22,6 +22,19 @@ DEFAULT_ISSUES = ["Password reset not working", "Can't log in", "Phone / email a
 
 # (main issue or "*", CDC result, English note, Hebrew female, Hebrew male, Hebrew neutral)
 # Neutral is used when the gender could not be guessed from the first name.
+# {offer} = the email-change offer. When the CDC email is masked (does not look
+# like the customer), the offer asks them to write from the email they want
+# instead, so ownership is proven before anything is changed.
+OFFER = {
+    "F": "אם תעדיפי שהחשבון יהיה על המייל {email}, כתבי לנו ונעדכן אותו עבורך.",
+    "M": "אם תעדיף שהחשבון יהיה על המייל {email}, כתוב לנו ונעדכן אותו עבורך.",
+    "":  "אם יש העדפה שהחשבון יהיה על המייל {email}, אפשר לכתוב לנו ונעדכן אותו.",
+}
+OFFER_MASKED = {
+    "F": "כדי שנוכל לעדכן את המייל בחשבון, אנא שלחי לנו הודעה מכתובת המייל שאליה תרצי להעביר את החשבון, ונטפל בזה.",
+    "M": "כדי שנוכל לעדכן את המייל בחשבון, אנא שלח לנו הודעה מכתובת המייל שאליה תרצה להעביר את החשבון, ונטפל בזה.",
+    "":  "כדי שנוכל לעדכן את המייל בחשבון, יש לשלוח לנו הודעה מכתובת המייל שאליה להעביר את החשבון, ונטפל בזה.",
+}
 # {greet} = "שלום <first name>," or "שלום," when the name is unknown.
 REPLY_TEMPLATES = [
     ("*", "Phone found",
@@ -47,9 +60,9 @@ REPLY_TEMPLATES = [
      "{greet}\nראינו שההתחברות לחשבון עם המייל {cdc_email} הצליחה בתאריך {last_login}. אם עדיין יש בעיה, נשמח לדעת מה קורה בניסיון ההתחברות."),
     ("*", "LOGGED IN AFTER CONTACT (mismatch)",
      "Customer wrote with one email but their phone's account has another email, and that account was logged into since the cutoff. Explain nicely: one phone per account.",
-     "{greet}\nראינו שהצלחת להתחבר לחשבון עם המייל {cdc_email} בתאריך {last_login} - נהדר!\nרק נסביר: במערכת החדשה כל מספר טלפון יכול להיות משויך לחשבון אחד בלבד, ולכן המספר {phone} מוביל לחשבון עם המייל {cdc_email}, ולא ל-{email}.\nאם תעדיפי שהחשבון יהיה על המייל {email}, כתבי לנו ונעדכן אותו עבורך.",
-     "{greet}\nראינו שהצלחת להתחבר לחשבון עם המייל {cdc_email} בתאריך {last_login} - נהדר!\nרק נסביר: במערכת החדשה כל מספר טלפון יכול להיות משויך לחשבון אחד בלבד, ולכן המספר {phone} מוביל לחשבון עם המייל {cdc_email}, ולא ל-{email}.\nאם תעדיף שהחשבון יהיה על המייל {email}, כתוב לנו ונעדכן אותו עבורך.",
-     "{greet}\nראינו שההתחברות לחשבון עם המייל {cdc_email} הצליחה בתאריך {last_login} - נהדר!\nרק נסביר: במערכת החדשה כל מספר טלפון יכול להיות משויך לחשבון אחד בלבד, ולכן המספר {phone} מוביל לחשבון עם המייל {cdc_email}, ולא ל-{email}.\nאם יש העדפה שהחשבון יהיה על המייל {email}, אפשר לכתוב לנו ונעדכן אותו."),
+     "{greet}\nראינו שהצלחת להתחבר לחשבון עם המייל {cdc_email} בתאריך {last_login} - נהדר!\nרק נסביר: במערכת החדשה כל מספר טלפון יכול להיות משויך לחשבון אחד בלבד, ולכן המספר {phone} מוביל לחשבון עם המייל {cdc_email}, ולא ל-{email}.\n{offer}",
+     "{greet}\nראינו שהצלחת להתחבר לחשבון עם המייל {cdc_email} בתאריך {last_login} - נהדר!\nרק נסביר: במערכת החדשה כל מספר טלפון יכול להיות משויך לחשבון אחד בלבד, ולכן המספר {phone} מוביל לחשבון עם המייל {cdc_email}, ולא ל-{email}.\n{offer}",
+     "{greet}\nראינו שההתחברות לחשבון עם המייל {cdc_email} הצליחה בתאריך {last_login} - נהדר!\nרק נסביר: במערכת החדשה כל מספר טלפון יכול להיות משויך לחשבון אחד בלבד, ולכן המספר {phone} מוביל לחשבון עם המייל {cdc_email}, ולא ל-{email}.\n{offer}"),
     ("*", "Phone not in CDC (likely erased)",
      "We can not see the phone attached to an account please create a new account. Or give us the email you are trying to login with to check.",
      "{greet}\nלא מצאנו חשבון המשויך למספר הטלפון {phone}. אנא הירשמי מחדש באתר/באפליקציה, או שלחי לנו את כתובת המייל שאיתה ניסית להתחבר כדי שנבדוק.",
@@ -62,14 +75,14 @@ REPLY_TEMPLATES = [
      "{greet}\nלא מצאנו חשבון המשויך למספר הטלפון {phone} או למייל {email}. יש להירשם מחדש באתר/באפליקציה."),
     ("*", "Mismatch: phone account has other email; no account on user email",
      "Please login with the correct email and we provide them the email they are signed up with.",
-     "{greet}\nבדקנו ולא מצאנו חשבון על המייל {email}. במערכת החדשה כל מספר טלפון יכול להיות משויך לחשבון אחד בלבד, והמספר {phone} משויך לחשבון עם המייל: {cdc_email}\nאנא נסי להתחבר עם מייל זה. אם תעדיפי שהחשבון יהיה על המייל {email}, כתבי לנו ונעדכן אותו עבורך.",
-     "{greet}\nבדקנו ולא מצאנו חשבון על המייל {email}. במערכת החדשה כל מספר טלפון יכול להיות משויך לחשבון אחד בלבד, והמספר {phone} משויך לחשבון עם המייל: {cdc_email}\nאנא נסה להתחבר עם מייל זה. אם תעדיף שהחשבון יהיה על המייל {email}, כתוב לנו ונעדכן אותו עבורך.",
-     "{greet}\nבדקנו ולא מצאנו חשבון על המייל {email}. במערכת החדשה כל מספר טלפון יכול להיות משויך לחשבון אחד בלבד, והמספר {phone} משויך לחשבון עם המייל: {cdc_email}\nיש להתחבר עם מייל זה. אם יש העדפה שהחשבון יהיה על המייל {email}, אפשר לכתוב לנו ונעדכן אותו."),
+     "{greet}\nבדקנו ולא מצאנו חשבון על המייל {email}. במערכת החדשה כל מספר טלפון יכול להיות משויך לחשבון אחד בלבד, והמספר {phone} משויך לחשבון עם המייל: {cdc_email}\nאנא נסי להתחבר עם מייל זה. {offer}",
+     "{greet}\nבדקנו ולא מצאנו חשבון על המייל {email}. במערכת החדשה כל מספר טלפון יכול להיות משויך לחשבון אחד בלבד, והמספר {phone} משויך לחשבון עם המייל: {cdc_email}\nאנא נסה להתחבר עם מייל זה. {offer}",
+     "{greet}\nבדקנו ולא מצאנו חשבון על המייל {email}. במערכת החדשה כל מספר טלפון יכול להיות משויך לחשבון אחד בלבד, והמספר {phone} משויך לחשבון עם המייל: {cdc_email}\nיש להתחבר עם מייל זה. {offer}"),
     ("*", "Mismatch: email on a different account",
      "Please login with the correct email and we provide them the email they are signed up with. Here we explain also we only allow the use of one phone per account.",
-     "{greet}\nיש לך שני חשבונות: אחד על המייל {email} ואחד על המייל {cdc_email}. במערכת החדשה כל מספר טלפון יכול להיות משויך לחשבון אחד בלבד, והמספר {phone} משויך כרגע לחשבון עם {cdc_email}.\nאפשר להתחבר עם {cdc_email}, או לכתוב לנו באיזה חשבון תעדיפי להשתמש ונסדר זאת עבורך.",
-     "{greet}\nיש לך שני חשבונות: אחד על המייל {email} ואחד על המייל {cdc_email}. במערכת החדשה כל מספר טלפון יכול להיות משויך לחשבון אחד בלבד, והמספר {phone} משויך כרגע לחשבון עם {cdc_email}.\nאפשר להתחבר עם {cdc_email}, או לכתוב לנו באיזה חשבון תעדיף להשתמש ונסדר זאת עבורך.",
-     "{greet}\nקיימים שני חשבונות: אחד על המייל {email} ואחד על המייל {cdc_email}. במערכת החדשה כל מספר טלפון יכול להיות משויך לחשבון אחד בלבד, והמספר {phone} משויך כרגע לחשבון עם {cdc_email}.\nאפשר להתחבר עם {cdc_email}, או לכתוב לנו באיזה חשבון להשתמש ונסדר זאת."),
+     "{greet}\nיש לך שני חשבונות: אחד על המייל {email} ואחד על המייל {cdc_email}. במערכת החדשה כל מספר טלפון יכול להיות משויך לחשבון אחד בלבד, והמספר {phone} משויך כרגע לחשבון עם {cdc_email}.\nאפשר להתחבר עם {cdc_email}. {offer}",
+     "{greet}\nיש לך שני חשבונות: אחד על המייל {email} ואחד על המייל {cdc_email}. במערכת החדשה כל מספר טלפון יכול להיות משויך לחשבון אחד בלבד, והמספר {phone} משויך כרגע לחשבון עם {cdc_email}.\nאפשר להתחבר עם {cdc_email}. {offer}",
+     "{greet}\nקיימים שני חשבונות: אחד על המייל {email} ואחד על המייל {cdc_email}. במערכת החדשה כל מספר טלפון יכול להיות משויך לחשבון אחד בלבד, והמספר {phone} משויך כרגע לחשבון עם {cdc_email}.\nאפשר להתחבר עם {cdc_email}. {offer}"),
     ("*", "Email found",
      "Customer gave only an email and it exists in CDC: tell them to log in with it (and which phone is on it).",
      "{greet}\nמצאנו את החשבון הרשום עם המייל {email}. אנא נסי להתחבר עם מייל זה. אם ההתחברות נכשלת, לחצי על 'שכחתי סיסמה' ועדכני אותנו.",
@@ -129,7 +142,7 @@ def ensure_templates(wb):
         return
     ts = wb.create_sheet("Reply templates")
     ts.append(["Main issue (* = any)", "CDC result", "English note", "Hebrew reply - female", "Hebrew reply - male",
-               "Hebrew reply - gender unknown", "Placeholders: {greet} {phone} {email} {cdc_email} {last_login} {ticket}"])
+               "Hebrew reply - gender unknown", "Placeholders: {greet} {phone} {email} {cdc_email} {last_login} {ticket} {offer}"])
     for c in ts[1]: c.font = Font(bold=True)
     for row in REPLY_TEMPLATES: ts.append(list(row))
     ts.column_dimensions["B"].width = 45; ts.column_dimensions["C"].width = 50
@@ -200,7 +213,8 @@ def build(inp, out, issues, cutoff=None):
         gave = {e.strip().lower() for e in f"{g('Email') or ''},{g('Other emails') or ''}".replace(";", ",").split(",") if "@" in e}
         email_ok = "@" not in cdc_email or cdc_email.lower() in gave or email_matches_name(cdc_email, g("Customer name"))
         email_check = "" if email_ok else "masked - name does not match email"
-        reply = text.format(greet=f"שלום {heb_name}," if heb_name else "שלום,", phone=g("Phone") or "", email=g("Email") or "",
+        offer = (OFFER if email_ok else OFFER_MASKED)[gender if gender in ("F", "M") else ""].format(email=g("Email") or "")
+        reply = text.format(offer=offer, greet=f"שלום {heb_name}," if heb_name else "שלום,", phone=g("Phone") or "", email=g("Email") or "",
                             cdc_email=cdc_email if email_ok else mask_email(cdc_email),
                             ticket=g("Latest ticket #") or "", last_login=ll or "")
         vals = [g(c) for c in HEAD_COLS] + [reply, "Yes" if ll else "No", email_check, heb_name, gender or "?", "check" if check else ""] + [g(c) for c in CUSTOMER_COLS] + [g(c) for c in CDC_COLS]

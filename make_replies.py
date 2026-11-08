@@ -14,7 +14,7 @@ Usage:  python3 make_replies.py CHECKED.xlsx OUT.xlsx [--issues "A;B;C"]
 import argparse, sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import openpyxl
-from hebrew_names import hebrew_name_and_gender
+from hebrew_names import hebrew_name_and_gender, email_matches_name, mask_email
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
 
@@ -92,7 +92,8 @@ HEAD_COLS = ["User ID", "Priority", "Ticket numbers", "Latest ticket #", "Main i
 
 FILL_REPLY = PatternFill("solid", fgColor="FFF2CC")     # yellow
 FILL_CUSTOMER = PatternFill("solid", fgColor="DDEBF7")  # blue
-FILL_CDC = PatternFill("solid", fgColor="E2EFDA")       # green
+FILL_CDC = PatternFill("solid", fgColor="E2EFDA")       # light green
+FILL_LOGGED_IN = PatternFill("solid", fgColor="92D050")  # green: customer logged in after contacting us
 
 
 def ensure_templates(wb):
@@ -143,13 +144,13 @@ def build(inp, out, issues):
     if missing: sys.exit(f"Users sheet missing columns: {missing}")
     if "Replies" in wb.sheetnames: del wb["Replies"]
     rs = wb.create_sheet("Replies", 0)
-    header = HEAD_COLS + ["Reply (copy-paste)", "Logged in after contact", "First name (Hebrew)", "Gender guess", "Name needs check"] + ["Customer gave: " + c for c in CUSTOMER_COLS] + CDC_COLS
+    header = HEAD_COLS + ["Reply (copy-paste)", "Logged in after contact", "Email check", "First name (Hebrew)", "Gender guess", "Name needs check"] + ["Customer gave: " + c for c in CUSTOMER_COLS] + CDC_COLS
     rs.append(header)
     for i, c in enumerate(rs[1], 1):
         c.font = Font(bold=True)
-        if len(HEAD_COLS) + 1 <= i <= len(HEAD_COLS) + 5: c.fill = FILL_REPLY
-        elif len(HEAD_COLS) + 5 < i <= len(HEAD_COLS) + 5 + len(CUSTOMER_COLS): c.fill = FILL_CUSTOMER
-        elif i > len(HEAD_COLS) + 5 + len(CUSTOMER_COLS): c.fill = FILL_CDC
+        if len(HEAD_COLS) + 1 <= i <= len(HEAD_COLS) + 6: c.fill = FILL_REPLY
+        elif len(HEAD_COLS) + 6 < i <= len(HEAD_COLS) + 6 + len(CUSTOMER_COLS): c.fill = FILL_CUSTOMER
+        elif i > len(HEAD_COLS) + 6 + len(CUSTOMER_COLS): c.fill = FILL_CDC
     n = 0
     for row in us.iter_rows(min_row=2, values_only=True):
         g = lambda name: row[col[name]]
@@ -160,17 +161,22 @@ def build(inp, out, issues):
         heb_name, gender, check = hebrew_name_and_gender(g("Customer name"))
         tpl = templates.get((g("Main issue"), key)) or templates.get(("*", key)) or {"F": f"[אין תבנית לתוצאה: {result}]"}
         text = tpl.get(gender) or tpl.get("") or tpl.get("F", "")
+        cdc_email = login_email(g("CDC accounts on phone (UID)"), g("CDC email on phone account"), g("CDC account details (per UID)"))
+        gave = {e.strip().lower() for e in f"{g('Email') or ''},{g('Other emails') or ''}".replace(";", ",").split(",") if "@" in e}
+        email_ok = "@" not in cdc_email or cdc_email.lower() in gave or email_matches_name(cdc_email, g("Customer name"))
+        email_check = "" if email_ok else "masked - name does not match email"
         reply = text.format(greet=f"שלום {heb_name}," if heb_name else "שלום,", phone=g("Phone") or "", email=g("Email") or "",
-                            cdc_email=login_email(g("CDC accounts on phone (UID)"), g("CDC email on phone account"), g("CDC account details (per UID)")),
+                            cdc_email=cdc_email if email_ok else mask_email(cdc_email),
                             ticket=g("Latest ticket #") or "", last_login=ll or "")
-        vals = [g(c) for c in HEAD_COLS] + [reply, "Yes" if ll else "No", heb_name, gender or "?", "check" if check else ""] + [g(c) for c in CUSTOMER_COLS] + [g(c) for c in CDC_COLS]
+        vals = [g(c) for c in HEAD_COLS] + [reply, "Yes" if ll else "No", email_check, heb_name, gender or "?", "check" if check else ""] + [g(c) for c in CUSTOMER_COLS] + [g(c) for c in CDC_COLS]
         rs.append(vals); n += 1
         r = rs.max_row
         for i in range(1, len(header) + 1):
             c = rs.cell(r, i); c.alignment = Alignment(wrap_text=True, vertical="top")
-            if len(HEAD_COLS) + 1 <= i <= len(HEAD_COLS) + 5: c.fill = FILL_REPLY
-            elif len(HEAD_COLS) + 5 < i <= len(HEAD_COLS) + 5 + len(CUSTOMER_COLS): c.fill = FILL_CUSTOMER
-            elif i > len(HEAD_COLS) + 5 + len(CUSTOMER_COLS): c.fill = FILL_CDC
+            if i in (len(HEAD_COLS) + 1, len(HEAD_COLS) + 2) and ll: c.fill = FILL_LOGGED_IN
+            elif len(HEAD_COLS) + 1 <= i <= len(HEAD_COLS) + 6: c.fill = FILL_REPLY
+            elif len(HEAD_COLS) + 6 < i <= len(HEAD_COLS) + 6 + len(CUSTOMER_COLS): c.fill = FILL_CUSTOMER
+            elif i > len(HEAD_COLS) + 6 + len(CUSTOMER_COLS): c.fill = FILL_CDC
     widths = {"Ticket numbers": 22, "Customer's words (all login tickets)": 50, "Reply (copy-paste)": 60,
               "CDC result": 30, "CDC account details (per UID)": 60, "Main issue": 24, "Issue (most specific)": 30}
     for i, name in enumerate(header, 1):

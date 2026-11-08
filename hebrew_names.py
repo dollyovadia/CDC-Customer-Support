@@ -99,3 +99,58 @@ def hebrew_name_and_gender(raw):
     heb = LATIN.get(first)
     if heb: return heb, HEBREW.get(heb, ""), heb not in HEBREW
     return "", "", True   # unknown latin name: leave the name out of the greeting
+
+
+# ---------------------------------------------------------- name <-> email
+_HEB_SKEL = {"ב":"b","ג":"g","ד":"d","ז":"z","ח":"h","ט":"t","כ":"k","ך":"k","ל":"l","מ":"m","ם":"m","נ":"n","ן":"n","ס":"s",
+             "פ":"p","ף":"p","צ":"ts","ץ":"ts","ק":"k","ר":"r","ש":"s","ת":"t"}   # א ה ו י ע dropped (vowel-like)
+_LAT_TO_HEB_CANON = {}
+for _lat, _heb in LATIN.items():
+    _LAT_TO_HEB_CANON.setdefault(_heb, _lat)
+
+
+def skeleton(s):
+    """Consonant skeleton so Hebrew and Latin spellings compare: נטלי -> ntl, nathalie -> ntl."""
+    s = unicodedata.normalize("NFKC", str(s or "")).lower()
+    s = s.replace("ph", "f").replace("sh", "s").replace("ch", "h").replace("tz", "ts").replace("ck", "k")
+    out = []
+    for ch in s:
+        if ch in _HEB_SKEL: out.append(_HEB_SKEL[ch])
+        elif "֐" <= ch <= "׿": continue
+        elif ch in "aeiouyhw'-": continue
+        elif ch == "v": out.append("b")
+        elif ch in "cq": out.append("k")
+        elif ch == "f": out.append("p")
+        elif ch.isalpha(): out.append(ch)
+    return "".join(out)
+
+
+def name_tokens(raw):
+    s = unicodedata.normalize("NFKC", str(raw or "")).replace("_", " ").replace(".", " ").replace("-", " ")
+    s = "".join(ch for ch in s if unicodedata.category(ch)[0] in "LZ" or ch == "'")
+    toks = [t.lower() for t in s.split() if len(t) >= 2]
+    extra = []
+    for t in toks:
+        if t in _LAT_TO_HEB_CANON: extra.append(_LAT_TO_HEB_CANON[t])   # hebrew first name -> its latin spelling
+        if t in LATIN: extra.append(LATIN[t])
+    return toks + extra
+
+
+def email_matches_name(email, customer_name):
+    """True when the email's local part contains something that looks like the
+    customer's first name or surname (skeleton match, 3+ consonants, or the
+    full name when shorter)."""
+    local = (email or "").split("@")[0].lower()
+    if not local or not customer_name: return False
+    ls = skeleton(local)
+    for tok in name_tokens(customer_name):
+        ts = skeleton(tok)
+        if len(ts) >= 3 and ts in ls: return True
+        if 1 <= len(ts) < 3 and (tok in local or (ts and ls.startswith(ts))): return True
+    return False
+
+
+def mask_email(email):
+    if not email or "@" not in email: return email
+    local, dom = email.split("@", 1)
+    return f"{local[:2]}***@{dom}"

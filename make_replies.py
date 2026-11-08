@@ -24,16 +24,17 @@ DEFAULT_ISSUES = ["Password reset not working", "Can't log in", "Phone / email a
 # Neutral is used when the gender could not be guessed from the first name.
 # {offer} = the email-change offer. When the CDC email is masked (does not look
 # like the customer), the offer asks them to write from the email they want
-# instead, so ownership is proven before anything is changed.
+# instead: the number will be released (tech team erases that account) so
+# they can register again with their own email.
 OFFER = {
     "F": "אם תעדיפי שהחשבון יהיה על המייל {email}, כתבי לנו ונעדכן אותו עבורך.",
     "M": "אם תעדיף שהחשבון יהיה על המייל {email}, כתוב לנו ונעדכן אותו עבורך.",
     "":  "אם יש העדפה שהחשבון יהיה על המייל {email}, אפשר לכתוב לנו ונעדכן אותו.",
 }
 OFFER_MASKED = {
-    "F": "כדי שנוכל לעדכן את המייל בחשבון, אנא שלחי לנו הודעה מכתובת המייל שאליה תרצי להעביר את החשבון, ונטפל בזה.",
-    "M": "כדי שנוכל לעדכן את המייל בחשבון, אנא שלח לנו הודעה מכתובת המייל שאליה תרצה להעביר את החשבון, ונטפל בזה.",
-    "":  "כדי שנוכל לעדכן את המייל בחשבון, יש לשלוח לנו הודעה מכתובת המייל שאליה להעביר את החשבון, ונטפל בזה.",
+    "F": "כדי לשמור על אבטחת החשבון, נשחרר את מספר הטלפון {phone} מהחשבון הזה בימים הקרובים, ולאחר מכן תוכלי להירשם מחדש עם המספר והמייל {email}. נעדכן אותך כשזה יבוצע.",
+    "M": "כדי לשמור על אבטחת החשבון, נשחרר את מספר הטלפון {phone} מהחשבון הזה בימים הקרובים, ולאחר מכן תוכל להירשם מחדש עם המספר והמייל {email}. נעדכן אותך כשזה יבוצע.",
+    "":  "כדי לשמור על אבטחת החשבון, מספר הטלפון {phone} ישוחרר מהחשבון הזה בימים הקרובים, ולאחר מכן ניתן יהיה להירשם מחדש עם המספר והמייל {email}. נעדכן כשזה יבוצע.",
 }
 # {greet} = "שלום <first name>," or "שלום," when the name is unknown.
 REPLY_TEMPLATES = [
@@ -213,7 +214,7 @@ def build(inp, out, issues, cutoff=None):
         gave = {e.strip().lower() for e in f"{g('Email') or ''},{g('Other emails') or ''}".replace(";", ",").split(",") if "@" in e}
         email_ok = "@" not in cdc_email or cdc_email.lower() in gave or email_matches_name(cdc_email, g("Customer name"))
         email_check = "" if email_ok else "masked - name does not match email"
-        offer = (OFFER if email_ok else OFFER_MASKED)[gender if gender in ("F", "M") else ""].format(email=g("Email") or "")
+        offer = (OFFER if email_ok else OFFER_MASKED)[gender if gender in ("F", "M") else ""].format(email=g("Email") or "", phone=g("Phone") or "")
         reply = text.format(offer=offer, greet=f"שלום {heb_name}," if heb_name else "שלום,", phone=g("Phone") or "", email=g("Email") or "",
                             cdc_email=cdc_email if email_ok else mask_email(cdc_email),
                             ticket=g("Latest ticket #") or "", last_login=ll or "")

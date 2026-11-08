@@ -65,6 +65,26 @@ REPLY_TEMPLATES = [
      "{greet}\nהמייל {email} משויך לחשבון אחר מזה של מספר הטלפון {phone}. החשבון של מספר הטלפון רשום עם המייל: {cdc_email}\nאנא נסי להתחבר עם מייל זה. שימי לב: ניתן לשייך מספר טלפון אחד לחשבון אחד בלבד.",
      "{greet}\nהמייל {email} משויך לחשבון אחר מזה של מספר הטלפון {phone}. החשבון של מספר הטלפון רשום עם המייל: {cdc_email}\nאנא נסה להתחבר עם מייל זה. שים לב: ניתן לשייך מספר טלפון אחד לחשבון אחד בלבד.",
      "{greet}\nהמייל {email} משויך לחשבון אחר מזה של מספר הטלפון {phone}. החשבון של מספר הטלפון רשום עם המייל: {cdc_email}\nיש להתחבר עם מייל זה. לתשומת לבך: ניתן לשייך מספר טלפון אחד לחשבון אחד בלבד."),
+    ("*", "Email found",
+     "Customer gave only an email and it exists in CDC: tell them to log in with it (and which phone is on it).",
+     "{greet}\nמצאנו את החשבון הרשום עם המייל {email}. אנא נסי להתחבר עם מייל זה. אם ההתחברות נכשלת, לחצי על 'שכחתי סיסמה' ועדכני אותנו.",
+     "{greet}\nמצאנו את החשבון הרשום עם המייל {email}. אנא נסה להתחבר עם מייל זה. אם ההתחברות נכשלת, לחץ על 'שכחתי סיסמה' ועדכן אותנו.",
+     "{greet}\nמצאנו את החשבון הרשום עם המייל {email}. יש להתחבר עם מייל זה. אם ההתחברות נכשלת, יש ללחוץ על 'שכחתי סיסמה' ולעדכן אותנו."),
+    ("*", "Email not in CDC (likely erased)",
+     "Customer gave only an email and it is not in CDC: register again, or send us the phone number to check.",
+     "{greet}\nלא מצאנו חשבון הרשום עם המייל {email}. אנא הירשמי מחדש באתר/באפליקציה, או שלחי לנו את מספר הטלפון שלך כדי שנבדוק.",
+     "{greet}\nלא מצאנו חשבון הרשום עם המייל {email}. אנא הירשם מחדש באתר/באפליקציה, או שלח לנו את מספר הטלפון שלך כדי שנבדוק.",
+     "{greet}\nלא מצאנו חשבון הרשום עם המייל {email}. יש להירשם מחדש באתר/באפליקציה, או לשלוח לנו את מספר הטלפון כדי שנבדוק."),
+    ("*", "Email on multiple accounts",
+     "Email sits on more than one account - check manually which is the login one.",
+     "[בדיקה ידנית] המייל {email} משויך ליותר מחשבון אחד. יש לבחור את חשבון ההתחברות (ראו פרטי חשבונות) ולעדכן את הלקוחה.",
+     "[בדיקה ידנית] המייל {email} משויך ליותר מחשבון אחד. יש לבחור את חשבון ההתחברות (ראו פרטי חשבונות) ולעדכן את הלקוח.",
+     "[בדיקה ידנית] המייל {email} משויך ליותר מחשבון אחד. יש לבחור את חשבון ההתחברות (ראו פרטי חשבונות) ולעדכן את הלקוח/ה."),
+    ("*", "No phone or email to check",
+     "Nothing to look up: ask the customer for the phone number and email they registered with.",
+     "{greet}\nכדי שנוכל לבדוק את החשבון, אנא שלחי לנו את מספר הטלפון ואת כתובת המייל שאיתם נרשמת.",
+     "{greet}\nכדי שנוכל לבדוק את החשבון, אנא שלח לנו את מספר הטלפון ואת כתובת המייל שאיתם נרשמת.",
+     "{greet}\nכדי שנוכל לבדוק את החשבון, יש לשלוח לנו את מספר הטלפון ואת כתובת המייל ששימשו להרשמה."),
     ("*", "Phone not in CDC; email has account",
      "Email exists but without this phone.",
      "{greet}\nהמייל {email} משויך לחשבון, אך מספר הטלפון {phone} אינו מופיע בו. אנא התחברי עם המייל והוסיפי את מספר הטלפון בפרופיל.",
@@ -154,14 +174,17 @@ def build(inp, out, issues):
     n = 0
     for row in us.iter_rows(min_row=2, values_only=True):
         g = lambda name: row[col[name]]
-        if g("Main issue") not in issues or not g("User ID"): continue
+        if not g("User ID") or (issues != ["all"] and g("Main issue") not in issues): continue
         result = g("CDC result") or ""
-        ll = last_login_after_contact(g("CDC account details (per UID)"), g("First contact")) if g("CDC accounts on phone (UID)") not in (None, "none") else None
-        key = "LOGGED IN AFTER CONTACT" if ll and result in ("Phone found", "Match: phone and email on same account", "Phone on multiple accounts") else result
+        has_acc = g("CDC accounts on phone (UID)") not in (None, "none") or (result == "Email found")
+        ll = last_login_after_contact(g("CDC account details (per UID)"), g("First contact")) if has_acc else None
+        key = "LOGGED IN AFTER CONTACT" if ll and result in ("Phone found", "Match: phone and email on same account", "Phone on multiple accounts", "Email found") else result
         heb_name, gender, check = hebrew_name_and_gender(g("Customer name"))
         tpl = templates.get((g("Main issue"), key)) or templates.get(("*", key)) or {"F": f"[אין תבנית לתוצאה: {result}]"}
         text = tpl.get(gender) or tpl.get("") or tpl.get("F", "")
         cdc_email = login_email(g("CDC accounts on phone (UID)"), g("CDC email on phone account"), g("CDC account details (per UID)"))
+        if "@" not in cdc_email and result in ("Email found", "Email on multiple accounts") and g("Email"):
+            cdc_email = str(g("Email")).strip()
         gave = {e.strip().lower() for e in f"{g('Email') or ''},{g('Other emails') or ''}".replace(";", ",").split(",") if "@" in e}
         email_ok = "@" not in cdc_email or cdc_email.lower() in gave or email_matches_name(cdc_email, g("Customer name"))
         email_check = "" if email_ok else "masked - name does not match email"
@@ -188,6 +211,6 @@ def build(inp, out, issues):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("input"); ap.add_argument("output")
-    ap.add_argument("--issues", default=";".join(DEFAULT_ISSUES), help="main issues to include, separated by ';'")
+    ap.add_argument("--issues", default=";".join(DEFAULT_ISSUES), help="main issues to include, separated by ';' (or 'all')")
     a = ap.parse_args()
     build(a.input, a.output, [s.strip() for s in a.issues.split(";") if s.strip()])

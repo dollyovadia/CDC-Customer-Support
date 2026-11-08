@@ -28,6 +28,7 @@ Usage:
   python3 cdc_lookup.py INPUT.xlsx OUTPUT.xlsx [--limit 5] [--delay 0.2]
 """
 import argparse
+import re
 import datetime as dt
 import json
 import os
@@ -47,6 +48,7 @@ NEW_COLUMNS = [
     "CDC accounts on user email (UID)",
     "Phone on email account",
     "CDC accounts on other emails",
+    "CDC account details (per UID)",
     "CDC lookup error",
 ]
 
@@ -58,7 +60,7 @@ class CDCClient:
         self.url = f"https://accounts.{data_center}.gigya.com/accounts.search"
         self.auth = {"apiKey": api_key, "userKey": user_key, "secret": secret}
         self.phone_fields = phone_fields or ["phoneNumber", "profile.phones.number"]
-        self.email_fields = email_fields or ["profile.email", "loginIDs.emails"]
+        self.email_fields = email_fields or ["profile.email", "loginIDs.emails", "loginIDs.unverifiedEmails"]
         self.delay = delay
 
     @classmethod
@@ -76,7 +78,7 @@ class CDCClient:
     def _search(self, fields, value):
         value = value.replace("\\", "\\\\").replace('"', '\\"')
         where = " OR ".join(f'{f} = "{value}"' for f in fields)
-        query = f"SELECT UID, profile.email, loginIDs.emails, phoneNumber, profile.phones FROM accounts WHERE {where} LIMIT 20"
+        query = f"SELECT UID, profile.email, loginIDs, phoneNumber, profile.phones, created, lastLogin, isActive, isRegistered, isVerified, hasLiteAccount FROM accounts WHERE {where} LIMIT 20"
         data = urllib.parse.urlencode({**self.auth, "query": query}).encode()
         for attempt in range(4):
             try:
@@ -93,7 +95,14 @@ class CDCClient:
         return res.get("results", [])
 
     def by_phone(self, phone):
-        return self._search(self.phone_fields, phone)
+        """Search every common spelling of the number (+972..., 972..., 05...)."""
+        seen, results = set(), []
+        for variant in phone_variants(phone):
+            for acc in self._search(self.phone_fields, variant):
+                if acc["UID"] not in seen:
+                    seen.add(acc["UID"])
+                    results.append(acc)
+        return results
 
     def by_email(self, email):
         return self._search(self.email_fields, email.lower())
@@ -125,6 +134,35 @@ def account_phones(acc):
     return list(dict.fromkeys(out))
 
 
+def phone_variants(phone):
+    """'+972504668080' -> ['+972504668080', '972504668080', '0504668080'].
+    Local numbers ('0504668080') are also expanded to the +972 forms."""
+    digits = re.sub(r"\D", "", str(phone or ""))
+    if not digits:
+        return []
+    if digits.startswith("972"):
+        national = digits[3:]
+    elif digits.startswith("0"):
+        national = digits[1:]
+    else:  # foreign number: only try with / without the plus
+        return [f"+{digits}", digits]
+    return [f"+972{national}", f"972{national}", f"0{national}"]
+
+
+def account_summary(acc):
+    """One readable line per account: when created, last login, state flags."""
+    flags = [n for n in ("isActive", "isRegistered", "isVerified", "hasLiteAccount") if acc.get(n)]
+    unver = (acc.get("loginIDs") or {}).get("unverifiedEmails") or []
+    kind = "new-style UID" if "-" in acc["UID"] else "old-style UID"
+    parts = [acc["UID"], kind,
+             f"created {str(acc.get('created') or '?')[:10]}",
+             f"last login {str(acc.get('lastLogin') or 'never')[:10]}",
+             ",".join(flags) or "no flags"]
+    if unver:
+        parts.append("unverified emails: " + ", ".join(unver))
+    return " | ".join(parts)
+
+
 def norm_email(e):
     return (e or "").strip().lower()
 
@@ -134,7 +172,7 @@ def split_list(v):
 
 
 # --------------------------------------------------------------- core logic
-def check_user(client, phone, email, other_emails):
+def check_user(client, phone, email, other_emails, other_phones=None):
     """Return dict of NEW_COLUMNS values for one user."""
     r = {c: None for c in NEW_COLUMNS}
     r["CDC lookup date"] = dt.date.today().isoformat()
@@ -143,6 +181,10 @@ def check_user(client, phone, email, other_emails):
     try:
         if phone:
             phone_accs = client.by_phone(str(phone))
+            for op in split_list(other_phones):  # a second number the customer gave
+                for acc in client.by_phone(op):
+                    if acc["UID"] not in {a["UID"] for a in phone_accs}:
+                        phone_accs.append(acc)
             r["CDC accounts on phone (UID)"] = ", ".join(a["UID"] for a in phone_accs) or "none"
             r["CDC email on phone account"] = "; ".join(
                 ", ".join(account_emails(a)) or "(no email)" for a in phone_accs) or None
@@ -158,6 +200,10 @@ def check_user(client, phone, email, other_emails):
             accs = client.by_email(oe)
             others.append(f"{oe}: {', '.join(a['UID'] for a in accs) or 'none'}")
         r["CDC accounts on other emails"] = " | ".join(others) or None
+        seen = {}
+        for a in (phone_accs or []) + (email_accs or []):
+            seen.setdefault(a["UID"], account_summary(a))
+        r["CDC account details (per UID)"] = "\n".join(seen.values()) or None
     except Exception as ex:  # keep going; record the error on the row
         r["CDC lookup error"] = str(ex)[:500]
         r["CDC result"] = "Lookup error"
@@ -198,8 +244,9 @@ def classify(phone, email, phone_accs, email_accs):
 
 
 # -------------------------------------------------------------- workbook io
-def run(inp, out, client, limit=None):
+def run(inp, out, client, limit=None, save_every=25):
     wb = openpyxl.load_workbook(inp)
+    results = {}
     ws = wb["Users"]
     header = [c.value for c in ws[1]]
     col = {h: i for i, h in enumerate(header)}
@@ -222,18 +269,48 @@ def run(inp, out, client, limit=None):
         phone = ws.cell(row=row, column=col["Phone (intl, for CDC)"] + 1).value
         email = ws.cell(row=row, column=col["Email"] + 1).value
         others = ws.cell(row=row, column=col["Other emails"] + 1).value if "Other emails" in col else None
-        res = check_user(client, phone, email, others)
+        other_phones = ws.cell(row=row, column=col["Other phones"] + 1).value if "Other phones" in col else None
+        res = check_user(client, phone, email, others, other_phones)
         for i, name in enumerate(NEW_COLUMNS):
             ws.cell(row=row, column=start + i, value=res[name])
         if "CDC finding" in col:
             c = ws.cell(row=row, column=col["CDC finding"] + 1)
             if not c.value:
                 c.value = res["CDC result"]
+        results[uid] = res
         done += 1
         print(f"{uid}: {res['CDC result']}", flush=True)
+        if done % save_every == 0:  # checkpoint so a network drop loses little
+            wb.save(out)
 
+    annotate_tickets(wb, results)
     wb.save(out)
     print(f"Checked {done} users -> {out}")
+
+
+TICKET_COLUMNS = ["CDC result", "CDC email on phone account",
+                  "CDC accounts on phone (UID)", "CDC accounts on user email (UID)",
+                  "CDC lookup date"]
+
+
+def annotate_tickets(wb, results):
+    """Copy each user's finding onto every one of their rows in the Tickets
+    sheet, so a ticket number alone is enough to find the CDC finding later."""
+    if "Tickets" not in wb.sheetnames:
+        return
+    ts = wb["Tickets"]
+    header = [c.value for c in ts[1]]
+    if "User ID" not in header:
+        return
+    uid_col = header.index("User ID") + 1
+    start = ts.max_column + 1
+    for i, name in enumerate(TICKET_COLUMNS):
+        ts.cell(row=1, column=start + i, value=name).font = openpyxl.styles.Font(bold=True)
+    for row in range(2, ts.max_row + 1):
+        res = results.get(ts.cell(row=row, column=uid_col).value)
+        if res:
+            for i, name in enumerate(TICKET_COLUMNS):
+                ts.cell(row=row, column=start + i, value=res[name])
 
 
 def main():

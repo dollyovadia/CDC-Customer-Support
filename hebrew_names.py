@@ -138,14 +138,17 @@ def name_tokens(raw):
     return toks + extra
 
 
-def email_matches_name(email, customer_name):
+def email_matches_name(email, customer_name, first_only=False):
     """True when the email's local part contains something that looks like the
-    customer's first name or surname (skeleton match, 3+ consonants, or the
-    full name when shorter)."""
+    customer's first name (or surname unless first_only) - skeleton match."""
     local = (email or "").split("@")[0].lower()
     if not local or not customer_name: return False
     ls = skeleton(local)
-    for tok in name_tokens(customer_name):
+    toks = name_tokens(customer_name)
+    if first_only:
+        first = toks[0] if toks else ""
+        toks = [t for t in toks if t == first or t in (_LAT_TO_HEB_CANON.get(first), LATIN.get(first))]
+    for tok in toks:
         ts = skeleton(tok)
         if len(ts) >= 3 and ts in ls: return True
         if 1 <= len(ts) < 3 and (tok in local or (ts and ls.startswith(ts))): return True
@@ -156,3 +159,12 @@ def mask_email(email):
     if not email or "@" not in email: return email
     local, dom = email.split("@", 1)
     return f"{local[:2]}***@{dom}"
+
+
+def same_first_name(name_a, name_b):
+    """True when two full names share a first name (skeleton compare)."""
+    a = name_tokens(name_a); b = name_tokens(name_b)
+    if not a or not b: return False
+    sa = {skeleton(t) for t in a[:1] + [x for x in a if x in (_LAT_TO_HEB_CANON.get(a[0]), LATIN.get(a[0]))]}
+    sb = {skeleton(t) for t in b[:1] + [x for x in b if x in (_LAT_TO_HEB_CANON.get(b[0]), LATIN.get(b[0]))]}
+    return bool(sa & sb - {""})

@@ -14,7 +14,7 @@ Usage:  python3 make_replies.py CHECKED.xlsx OUT.xlsx [--issues "A;B;C"]
 import argparse, sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import openpyxl
-from hebrew_names import hebrew_name_and_gender, email_matches_name, mask_email
+from hebrew_names import hebrew_name_and_gender, email_matches_name, mask_email, same_first_name
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
 
@@ -225,13 +225,14 @@ def build(inp, out, issues, cutoff=None):
         elif ll and result in ("Mismatch: phone account has other email; no account on user email", "Mismatch: email on a different account"):
             key = "LOGGED IN AFTER CONTACT (mismatch)"
         cust_name = g("Customer name")
-        name_source = "ticket"
+        name_source = "ticket"; own_email_uid_name = False
         if not cust_name and "CDC name on accounts (per UID)" in col:
             names_col = g("CDC name on accounts (per UID)"); details = g("CDC account details (per UID)")
             own_email_uid = login_uid(g("CDC accounts on user email (UID)"), details) if g("CDC accounts on user email (UID)") not in (None, "none") else None
             phone_uid = login_uid(g("CDC accounts on phone (UID)"), details) if g("CDC accounts on phone (UID)") not in (None, "none") else None
             # 1) the account on the customer's own email is the safest source of their name
             cust_name = cdc_name_for(own_email_uid, names_col) if own_email_uid else ""
+            own_email_uid_name = bool(cust_name)
             # 2) else the phone account's name, but only if the customer gave no email or that name fits the email they gave
             if not cust_name and phone_uid:
                 nm = cdc_name_for(phone_uid, names_col)
@@ -245,8 +246,17 @@ def build(inp, out, issues, cutoff=None):
         if "@" not in cdc_email and result in ("Email found", "Email on multiple accounts") and g("Email"):
             cdc_email = str(g("Email")).strip()
         gave = {e.strip().lower() for e in f"{g('Email') or ''},{g('Other emails') or ''}".replace(";", ",").split(",") if "@" in e}
-        email_ok = "@" not in cdc_email or cdc_email.lower() in gave or email_matches_name(cdc_email, g("Customer name")) \
-            or (name_source == "CDC" and bool(cust_name) and (not g("Email") or email_matches_name(g("Email"), cust_name)))  # name from CDC: compare it with the email the customer gave
+        # Identity check: does the account holding the customer's phone look like the customer?
+        # Proof: the customer gave that very email; or the email contains their FIRST name; or the
+        # account's own CDC name has the same first name. A shared surname alone is not proof (family).
+        phone_acc_name = cdc_name_for(login_uid(g("CDC accounts on phone (UID)"), g("CDC account details (per UID)")),
+                                      g("CDC name on accounts (per UID)")) if "CDC name on accounts (per UID)" in col and g("CDC accounts on phone (UID)") not in (None, "none") else ""
+        known_name = g("Customer name") or (cust_name if name_source == "CDC" and own_email_uid_name else "")
+        email_ok = ("@" not in cdc_email or cdc_email.lower() in gave
+                    or (bool(known_name) and email_matches_name(cdc_email, known_name, first_only=True))
+                    or (bool(known_name) and same_first_name(known_name, phone_acc_name))
+                    or (bool(g("Email")) and bool(phone_acc_name) and email_matches_name(g("Email"), phone_acc_name, first_only=True))  # the phone account's owner name fits the email the customer wrote from
+                    or (not known_name and not g("Email")))   # phone-only ticket, no name anywhere: nothing to contradict
         email_check = "" if email_ok else "masked - name does not match email"
         offer = (OFFER if email_ok else OFFER_MASKED)[gender if gender in ("F", "M") else ""].format(email=g("Email") or "", phone=g("Phone") or "")
         reply = text.format(offer=offer, greet=f"שלום {heb_name}," if heb_name else "שלום,", phone=g("Phone") or "", email=g("Email") or "",

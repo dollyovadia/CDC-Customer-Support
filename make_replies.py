@@ -227,8 +227,16 @@ def build(inp, out, issues, cutoff=None):
         cust_name = g("Customer name")
         name_source = "ticket"
         if not cust_name and "CDC name on accounts (per UID)" in col:
-            cust_name = cdc_name_for(login_uid(g("CDC accounts on phone (UID)") if g("CDC accounts on phone (UID)") not in (None, "none") else g("CDC accounts on user email (UID)"),
-                                               g("CDC account details (per UID)")), g("CDC name on accounts (per UID)"))
+            names_col = g("CDC name on accounts (per UID)"); details = g("CDC account details (per UID)")
+            own_email_uid = login_uid(g("CDC accounts on user email (UID)"), details) if g("CDC accounts on user email (UID)") not in (None, "none") else None
+            phone_uid = login_uid(g("CDC accounts on phone (UID)"), details) if g("CDC accounts on phone (UID)") not in (None, "none") else None
+            # 1) the account on the customer's own email is the safest source of their name
+            cust_name = cdc_name_for(own_email_uid, names_col) if own_email_uid else ""
+            # 2) else the phone account's name, but only if the customer gave no email or that name fits the email they gave
+            if not cust_name and phone_uid:
+                nm = cdc_name_for(phone_uid, names_col)
+                if nm and (not g("Email") or email_matches_name(g("Email"), nm)):
+                    cust_name = nm
             name_source = "CDC" if cust_name else ""
         heb_name, gender, check = hebrew_name_and_gender(cust_name)
         tpl = templates.get((g("Main issue"), key)) or templates.get(("*", key)) or {"F": f"[אין תבנית לתוצאה: {result}]"}

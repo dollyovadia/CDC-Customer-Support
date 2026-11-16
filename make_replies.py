@@ -160,6 +160,23 @@ def load_templates(wb):
     return t
 
 
+def login_uid(uids, details):
+    uids = [u.strip() for u in str(uids or "").split(",") if u.strip() and u.strip() != "none"]
+    if not uids: return None
+    last = {m.group(1): m.group(2) for m in re.finditer(r"^([0-9a-f-]{32,36}) \|.*?last login (\S+)", str(details or ""), re.M)}
+    cands = [u for u in uids if "-" not in u] or uids
+    cands.sort(key=lambda u: last.get(u, "never") if last.get(u, "never") != "never" else "", reverse=True)
+    return cands[0]
+
+
+def cdc_name_for(uid, names_col):
+    for line in str(names_col or "").splitlines():
+        if uid and line.startswith(uid + ":"):
+            nm = line.split(":", 1)[1].strip()
+            return "" if nm == "(no name)" else nm
+    return ""
+
+
 def login_email(uids, emails, details):
     """Email of the login account. One account: its email. Several: the account
     with the old-style UID (no dashes); if several of those, the one logged
@@ -182,6 +199,8 @@ def build(inp, out, issues, cutoff=None):
     ensure_templates(wb)
     templates = load_templates(wb)
     us = wb["Users"]; h = [c.value for c in us[1]]; col = {n: i for i, n in enumerate(h)}
+    for extra in ("CDC name on accounts (per UID)",):
+        if extra in col and extra not in CDC_COLS: CDC_COLS.append(extra)
     missing = [c for c in HEAD_COLS + CUSTOMER_COLS + CDC_COLS if c not in col]
     if missing: sys.exit(f"Users sheet missing columns: {missing}")
     if "Replies" in wb.sheetnames: del wb["Replies"]
@@ -205,20 +224,27 @@ def build(inp, out, issues, cutoff=None):
             key = "LOGGED IN AFTER CONTACT"
         elif ll and result in ("Mismatch: phone account has other email; no account on user email", "Mismatch: email on a different account"):
             key = "LOGGED IN AFTER CONTACT (mismatch)"
-        heb_name, gender, check = hebrew_name_and_gender(g("Customer name"))
+        cust_name = g("Customer name")
+        name_source = "ticket"
+        if not cust_name and "CDC name on accounts (per UID)" in col:
+            cust_name = cdc_name_for(login_uid(g("CDC accounts on phone (UID)") if g("CDC accounts on phone (UID)") not in (None, "none") else g("CDC accounts on user email (UID)"),
+                                               g("CDC account details (per UID)")), g("CDC name on accounts (per UID)"))
+            name_source = "CDC" if cust_name else ""
+        heb_name, gender, check = hebrew_name_and_gender(cust_name)
         tpl = templates.get((g("Main issue"), key)) or templates.get(("*", key)) or {"F": f"[אין תבנית לתוצאה: {result}]"}
         text = tpl.get(gender) or tpl.get("") or tpl.get("F", "")
         cdc_email = login_email(g("CDC accounts on phone (UID)"), g("CDC email on phone account"), g("CDC account details (per UID)"))
         if "@" not in cdc_email and result in ("Email found", "Email on multiple accounts") and g("Email"):
             cdc_email = str(g("Email")).strip()
         gave = {e.strip().lower() for e in f"{g('Email') or ''},{g('Other emails') or ''}".replace(";", ",").split(",") if "@" in e}
-        email_ok = "@" not in cdc_email or cdc_email.lower() in gave or email_matches_name(cdc_email, g("Customer name"))
+        email_ok = "@" not in cdc_email or cdc_email.lower() in gave or email_matches_name(cdc_email, g("Customer name")) \
+            or (name_source == "CDC" and bool(cust_name) and (not g("Email") or email_matches_name(g("Email"), cust_name)))  # name from CDC: compare it with the email the customer gave
         email_check = "" if email_ok else "masked - name does not match email"
         offer = (OFFER if email_ok else OFFER_MASKED)[gender if gender in ("F", "M") else ""].format(email=g("Email") or "", phone=g("Phone") or "")
         reply = text.format(offer=offer, greet=f"שלום {heb_name}," if heb_name else "שלום,", phone=g("Phone") or "", email=g("Email") or "",
                             cdc_email=cdc_email if email_ok else mask_email(cdc_email),
                             ticket=g("Latest ticket #") or "", last_login=ll or "")
-        vals = [g(c) for c in HEAD_COLS] + [reply, "Yes" if ll else "No", email_check, heb_name, gender or "?", "check" if check else ""] + [g(c) for c in CUSTOMER_COLS] + [g(c) for c in CDC_COLS]
+        vals = [g(c) for c in HEAD_COLS] + [reply, "Yes" if ll else "No", email_check, heb_name, gender or "?", ("check" if check else "") + (f" (name from {name_source})" if name_source == "CDC" else "")] + [g(c) for c in CUSTOMER_COLS] + [g(c) for c in CDC_COLS]
         rs.append(vals); n += 1
         r = rs.max_row
         for i in range(1, len(header) + 1):

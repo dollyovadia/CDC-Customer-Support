@@ -49,6 +49,7 @@ NEW_COLUMNS = [
     "Phone on email account",
     "CDC accounts on other emails",
     "CDC account details (per UID)",
+    "CDC name on accounts (per UID)",
     "CDC lookup error",
 ]
 
@@ -78,7 +79,7 @@ class CDCClient:
     def _search(self, fields, value):
         value = value.replace("\\", "\\\\").replace('"', '\\"')
         where = " OR ".join(f'{f} = "{value}"' for f in fields)
-        query = f"SELECT UID, profile.email, loginIDs, phoneNumber, profile.phones, created, lastLogin, isActive, isRegistered, isVerified, hasLiteAccount FROM accounts WHERE {where} LIMIT 20"
+        query = f"SELECT UID, profile.email, profile.firstName, profile.lastName, loginIDs, phoneNumber, profile.phones, created, lastLogin, isActive, isRegistered, isVerified, hasLiteAccount FROM accounts WHERE {where} LIMIT 20"
         data = urllib.parse.urlencode({**self.auth, "query": query}).encode()
         for attempt in range(4):
             try:
@@ -204,6 +205,12 @@ def check_user(client, phone, email, other_emails, other_phones=None):
         for a in (phone_accs or []) + (email_accs or []):
             seen.setdefault(a["UID"], account_summary(a))
         r["CDC account details (per UID)"] = "\n".join(seen.values()) or None
+        names = {}
+        for a in (phone_accs or []) + (email_accs or []):
+            pr = a.get("profile") or {}
+            nm = " ".join(x for x in (pr.get("firstName"), pr.get("lastName")) if x).strip()
+            names.setdefault(a["UID"], f"{a['UID']}: {nm or '(no name)'}")
+        r["CDC name on accounts (per UID)"] = "\n".join(names.values()) or None
     except Exception as ex:  # keep going; record the error on the row
         r["CDC lookup error"] = str(ex)[:500]
         r["CDC result"] = "Lookup error"

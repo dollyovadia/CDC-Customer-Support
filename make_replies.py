@@ -256,6 +256,7 @@ def build(inp, out, issues, cutoff=None):
                                       g("CDC name on accounts (per UID)")) if "CDC name on accounts (per UID)" in col and g("CDC accounts on phone (UID)") not in (None, "none") else ""
         known_name = g("Customer name") or (cust_name if own_email_uid_name else "")
         linked = ("@" not in cdc_email or cdc_email.lower() in gave
+                  or (not g("Email") and not g("Customer name"))   # phone-only ticket, no name: the phone account is all we have
                   or (bool(known_name) and email_matches_name(cdc_email, known_name))
                   or (bool(known_name) and same_first_name(known_name, phone_acc_name))
                   or (bool(g("Email")) and bool(phone_acc_name) and email_matches_name(g("Email"), phone_acc_name))

@@ -14,7 +14,7 @@ Usage:  python3 make_replies.py CHECKED.xlsx OUT.xlsx [--issues "A;B;C"]
 import argparse, sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import openpyxl
-from hebrew_names import hebrew_name_and_gender, email_matches_name, mask_email, same_first_name
+from hebrew_names import hebrew_name_and_gender, email_matches_name, mask_email, same_first_name, skeleton_overlap
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
 
@@ -246,18 +246,28 @@ def build(inp, out, issues, cutoff=None):
         if "@" not in cdc_email and result in ("Email found", "Email on multiple accounts") and g("Email"):
             cdc_email = str(g("Email")).strip()
         gave = {e.strip().lower() for e in f"{g('Email') or ''},{g('Other emails') or ''}".replace(";", ",").split(",") if "@" in e}
-        # Identity check: does the account holding the customer's phone look like the customer?
-        # Proof: the customer gave that very email; or the email contains their FIRST name; or the
-        # account's own CDC name has the same first name. A shared surname alone is not proof (family).
+        # Identity check for the account holding the customer's phone.
+        # With CDC names available: MASK only on a positive contradiction - we know the customer's
+        # first name (ticket, or the account on their own email) and the phone account belongs to
+        # someone with a different first name whose email does not carry the customer's name either.
+        # No evidence either way -> shown in full but flagged "unverified".
+        # Without CDC names (older files): mask when nothing links the email to the customer.
         phone_acc_name = cdc_name_for(login_uid(g("CDC accounts on phone (UID)"), g("CDC account details (per UID)")),
                                       g("CDC name on accounts (per UID)")) if "CDC name on accounts (per UID)" in col and g("CDC accounts on phone (UID)") not in (None, "none") else ""
-        known_name = g("Customer name") or (cust_name if name_source == "CDC" and own_email_uid_name else "")
-        email_ok = ("@" not in cdc_email or cdc_email.lower() in gave
-                    or (bool(known_name) and email_matches_name(cdc_email, known_name, first_only=True))
-                    or (bool(known_name) and same_first_name(known_name, phone_acc_name))
-                    or (bool(g("Email")) and bool(phone_acc_name) and email_matches_name(g("Email"), phone_acc_name, first_only=True))  # the phone account's owner name fits the email the customer wrote from
-                    or (not known_name and not g("Email")))   # phone-only ticket, no name anywhere: nothing to contradict
-        email_check = "" if email_ok else "masked - name does not match email"
+        known_name = g("Customer name") or (cust_name if own_email_uid_name else "")
+        linked = ("@" not in cdc_email or cdc_email.lower() in gave
+                  or (bool(known_name) and email_matches_name(cdc_email, known_name))
+                  or (bool(known_name) and same_first_name(known_name, phone_acc_name))
+                  or (bool(g("Email")) and bool(phone_acc_name) and email_matches_name(g("Email"), phone_acc_name))
+                  or (bool(g("Email")) and "@" in cdc_email and skeleton_overlap(g("Email"), cdc_email)))
+        if "CDC name on accounts (per UID)" in col:
+            contradiction = (bool(known_name) and bool(phone_acc_name) and not same_first_name(known_name, phone_acc_name)
+                             and not email_matches_name(cdc_email, known_name, first_only=True))
+            email_ok = not contradiction
+            email_check = "masked - phone account belongs to a different person" if contradiction else ("" if linked else "unverified - no name evidence (shown in full)")
+        else:
+            email_ok = linked
+            email_check = "" if linked else "masked - name does not match email"
         offer = (OFFER if email_ok else OFFER_MASKED)[gender if gender in ("F", "M") else ""].format(email=g("Email") or "", phone=g("Phone") or "")
         reply = text.format(offer=offer, greet=f"שלום {heb_name}," if heb_name else "שלום,", phone=g("Phone") or "", email=g("Email") or "",
                             cdc_email=cdc_email if email_ok else mask_email(cdc_email),

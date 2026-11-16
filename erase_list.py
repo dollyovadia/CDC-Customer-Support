@@ -9,7 +9,7 @@ inp, out = sys.argv[1], sys.argv[2]
 ws = openpyxl.load_workbook(inp, read_only=True)["Replies"]
 rows = list(ws.iter_rows(values_only=True)); h = rows[0]
 sel = [dict(zip(h, r)) for r in rows[1:]]
-sel = [d for d in sel if d["Email check"] and str(d["CDC result"]).startswith("Mismatch")]
+sel = [d for d in sel if str(d["Email check"] or "").startswith("masked") and str(d["CDC result"]).startswith("Mismatch")]
 wb = openpyxl.Workbook(); o = wb.active; o.title = "Accounts to erase"
 cols = ["User ID", "Ticket numbers", "Customer name", "Customer phone", "Customer email (keep)", "CDC result",
         "UID to ERASE (phone account)", "Email on that account", "Account details", "UID of customer's own email account (KEEP)",

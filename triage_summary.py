@@ -17,7 +17,7 @@ if prev_path:
             if k: pidx[str(k).lower()]=d['User ID']
 def status(d):
     res=d['CDC result'] or ''
-    if d['Email check'] and res.startswith('Mismatch'): return 'D - Tech team: erase/release account (reply after)'
+    if str(d['Email check'] or '').startswith('masked') and res.startswith('Mismatch'): return 'D - Tech team: erase/release account (reply after)'
     if d['Logged in since cutoff']=='Yes': return 'A - Already logged in since 7.10: send confirmation, low priority'
     if res in ('Phone not in CDC (likely erased)','Phone and email not in CDC (likely erased)','Email not in CDC (likely erased)'): return 'C - No account in CDC: ask to register again'
     if res=='No phone or email to check': return 'E - Ask for phone + email'
@@ -43,7 +43,8 @@ for k,n in collections.Counter(d['CDC result'] for d in rows).most_common(): sm.
 li=sum(1 for d in rows if d['Logged in since cutoff']=='Yes')
 sm.append([]); sm.append(['Logged in since 7.10', li, f"{li/len(rows):.0%}"])
 if prev_path: sm.append(['Also appeared in the previous batch', sum(1 for p in prev_hit if p)])
-sm.append(['Masked emails (verify identity before revealing)', sum(1 for d in rows if d['Email check'])])
+sm.append(['Masked emails (different person on the phone account)', sum(1 for d in rows if str(d['Email check'] or '').startswith('masked'))])
+sm.append(['Unverified emails (no name evidence, shown in full)', sum(1 for d in rows if str(d['Email check'] or '').startswith('unverified'))])
 sm.column_dimensions['A'].width=58; sm.column_dimensions['C'].width=80
 for r in sm.iter_rows(min_row=4):
     for c in r: c.alignment=Alignment(wrap_text=True,vertical='top')

@@ -168,3 +168,10 @@ def same_first_name(name_a, name_b):
     sa = {skeleton(t) for t in a[:1] + [x for x in a if x in (_LAT_TO_HEB_CANON.get(a[0]), LATIN.get(a[0]))]}
     sb = {skeleton(t) for t in b[:1] + [x for x in b if x in (_LAT_TO_HEB_CANON.get(b[0]), LATIN.get(b[0]))]}
     return bool(sa & sb - {""})
+
+
+def skeleton_overlap(email_a, email_b, min_len=5):
+    """True when two emails' local parts share a long consonant run (e.g. gluckmanfamily vs gluckmanfamily51)."""
+    a = skeleton((email_a or "").split("@")[0]); b = skeleton((email_b or "").split("@")[0])
+    if len(a) < min_len or len(b) < min_len: return False
+    return any(a[i:i+min_len] in b for i in range(len(a) - min_len + 1))
